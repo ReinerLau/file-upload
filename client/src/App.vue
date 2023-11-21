@@ -1,13 +1,21 @@
 <script setup lang="ts">
+import { computed, ref, type Ref } from 'vue'
+
 /**
  * 当前上传的文件
  */
 let currentFile: File
 
+interface Chunk {
+  chunk: Blob
+  hash: string
+  precentage: number
+}
+
 /**
  * 所有切片信息
  */
-let data: { chunk: Blob; hash: string }[] = []
+let data: Ref<Chunk[]> = ref([])
 
 /**
  * 每个切片的大小
@@ -28,20 +36,27 @@ const handleFileChange = (e: any) => {
 /**
  * 封装请求方法
  * @param options 请求选项
+ * @param options.url 请求路径
+ * @param options.method 请求方法
+ * @param options.data 请求数据
+ * @param options.headers 请求头
  */
 const request = ({
   url,
   method = 'post',
   data,
-  headers = {}
+  headers = {},
+  onProgress = () => null
 }: {
   url: string
   method?: string
   data: any
   headers?: Record<string, string>
+  onProgress?: (e: ProgressEvent<EventTarget>) => any
 }) => {
   return new Promise((resolve) => {
     const xhr = new XMLHttpRequest()
+    xhr.upload.onprogress = onProgress
     xhr.open(method, url)
     Object.keys(headers).forEach((key) => xhr.setRequestHeader(key, headers[key]))
     xhr.send(data)
@@ -59,9 +74,10 @@ const request = ({
 const handleUpload = async () => {
   if (currentFile) {
     const fileChunkList = createFileChunk(currentFile)
-    data = fileChunkList.map((file, index) => ({
+    data.value = fileChunkList.map((file, index) => ({
       chunk: file,
-      hash: currentFile.name + '-' + index
+      hash: currentFile.name + '-' + index,
+      precentage: 0
     }))
     await uploadChunks()
   }
@@ -86,7 +102,7 @@ const createFileChunk = (file: File, size = CHUNK_SIZE) => {
  * 上传切片
  */
 const uploadChunks = async () => {
-  const requestList = data
+  const requestList = data.value
     .map((item) => {
       const formData = new FormData()
       formData.append('chunk', item.chunk)
@@ -94,16 +110,29 @@ const uploadChunks = async () => {
       formData.append('filename', currentFile.name)
       return formData
     })
-    .map((formData) =>
+    .map((formData, index) =>
       request({
         url: 'http://localhost:3000',
-        data: formData
+        data: formData,
+        onProgress: createProgressHandler(data.value[index])
       })
     )
   // 并发上传
   await Promise.all(requestList)
 
   await mergeRequest()
+
+  data.value.length = 0
+}
+
+/**
+ * 每个切片生成对应的进度事件
+ * @param item 每个切片
+ */
+const createProgressHandler = (item: Chunk) => {
+  return (e: ProgressEvent<EventTarget>) => {
+    item.precentage = parseInt(String((e.loaded / e.total) * 100))
+  }
 }
 
 /**
@@ -121,12 +150,32 @@ const mergeRequest = async () => {
     })
   })
 }
+
+/**
+ * 总进度条
+ */
+const uploadPrecentage = computed(() => {
+  if (data.value.length === 0) return 0
+  const loaded = data.value
+    .map((item) => item.chunk.size * item.precentage)
+    .reduce((acc, cur) => acc + cur)
+  return parseInt((loaded / currentFile.size).toFixed(2))
+})
 </script>
 
 <template>
   <div>
     <input type="file" @change="handleFileChange" />
     <input type="button" value="upload" @click="handleUpload" />
+    <div></div>
+    <div v-for="item in data" :key="item.hash">
+      <span>{{ item.hash }}: </span>
+      <progress :value="item.precentage" :max="100"></progress>
+    </div>
+    <div>
+      <span>总进度: </span>
+      <progress :value="uploadPrecentage" :max="100"></progress>
+    </div>
   </div>
 </template>
 
