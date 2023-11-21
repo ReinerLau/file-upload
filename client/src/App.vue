@@ -3,6 +3,8 @@ let currentFile: File
 
 let data: { chunk: Blob; hash: string }[] = []
 
+const CHUNK_SIZE = 10 * 1024 * 1024
+
 const handleFileChange = (e: any) => {
   const file = e.target.files[0]
   if (file) {
@@ -45,7 +47,7 @@ const handleUpload = async () => {
   }
 }
 
-const createFileChunk = (file: File, size = 10 * 1024 * 1024) => {
+const createFileChunk = (file: File, size = CHUNK_SIZE) => {
   const fileChunkList: Blob[] = []
   let cur = 0
   while (cur < file.size) {
@@ -82,7 +84,8 @@ const mergeRequest = async () => {
       'content-type': 'application/json'
     },
     data: JSON.stringify({
-      filename: currentFile.name
+      filename: currentFile.name,
+      chunkSize: CHUNK_SIZE
     })
   })
 }
