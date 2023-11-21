@@ -5,6 +5,9 @@ import path from "path";
 
 const server = http.createServer();
 
+/**
+ * 切片和合并文件所在路径
+ */
 const UPLOAD_DIR = path.resolve(__dirname, "..", "target");
 
 server.on("request", async (req, res) => {
@@ -42,6 +45,11 @@ server.on("request", async (req, res) => {
   }
 });
 
+/**
+ * 解析合并请求信息
+ * @param req 请求对象
+ * @returns promise
+ */
 const resolvePost = (req: http.IncomingMessage) => {
   return new Promise((resolve) => {
     let chunk = "";
@@ -54,6 +62,9 @@ const resolvePost = (req: http.IncomingMessage) => {
   });
 };
 
+/**
+ * 合并切片
+ */
 const mergeFileChunk = async (
   filePath: string,
   fileName: string,
@@ -76,6 +87,12 @@ const mergeFileChunk = async (
   fse.rmdirSync(chunkDir);
 };
 
+/**
+ * 读取切片数据写入到最终的合并文件中
+ * @param chunkPath 每个切片的路径
+ * @param fileWriteStream 合并文件的可写流
+ * @returns
+ */
 const pipeStream = (chunkPath: string, fileWriteStream: fse.WriteStream) => {
   return new Promise((resolve) => {
     const chunkReadStream = fse.createReadStream(chunkPath);

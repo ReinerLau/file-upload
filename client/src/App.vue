@@ -1,10 +1,23 @@
 <script setup lang="ts">
+/**
+ * 当前上传的文件
+ */
 let currentFile: File
 
+/**
+ * 所有切片信息
+ */
 let data: { chunk: Blob; hash: string }[] = []
 
+/**
+ * 每个切片的大小
+ */
 const CHUNK_SIZE = 10 * 1024 * 1024
 
+/**
+ * 切换上传文件
+ * @param e 事件对象
+ */
 const handleFileChange = (e: any) => {
   const file = e.target.files[0]
   if (file) {
@@ -12,6 +25,10 @@ const handleFileChange = (e: any) => {
   }
 }
 
+/**
+ * 封装请求方法
+ * @param options 请求选项
+ */
 const request = ({
   url,
   method = 'post',
@@ -36,6 +53,9 @@ const request = ({
   })
 }
 
+/**
+ * 上传文件
+ */
 const handleUpload = async () => {
   if (currentFile) {
     const fileChunkList = createFileChunk(currentFile)
@@ -47,6 +67,11 @@ const handleUpload = async () => {
   }
 }
 
+/**
+ * 将文件拆分成多个切片
+ * @param file 上传的文件对象
+ * @param size 每个切片的大小
+ */
 const createFileChunk = (file: File, size = CHUNK_SIZE) => {
   const fileChunkList: Blob[] = []
   let cur = 0
@@ -57,6 +82,9 @@ const createFileChunk = (file: File, size = CHUNK_SIZE) => {
   return fileChunkList
 }
 
+/**
+ * 上传切片
+ */
 const uploadChunks = async () => {
   const requestList = data
     .map((item) => {
@@ -72,11 +100,15 @@ const uploadChunks = async () => {
         data: formData
       })
     )
+  // 并发上传
   await Promise.all(requestList)
 
   await mergeRequest()
 }
 
+/**
+ * 合并文件请求
+ */
 const mergeRequest = async () => {
   await request({
     url: 'http://localhost:3000/merge',
