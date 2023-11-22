@@ -16,6 +16,7 @@ interface Chunk {
   chunkHash: string
   precentage: number
   fileHash: string
+  index: number
 }
 
 /**
@@ -89,6 +90,9 @@ const request = ({
   })
 }
 
+/**
+ * 暂停上传
+ */
 const handlePause = () => {
   requestList.forEach((xhr) => xhr.abort())
   requestList.length = 0
@@ -101,20 +105,26 @@ const handleUpload = async () => {
   if (currentFile) {
     const fileChunkList = createFileChunk(currentFile)
     currentFileHash = await calculateHash(fileChunkList)
-    const { shouldUpload } = await verifyUpload(currentFile.name, currentFileHash)
+    const { shouldUpload, uploadedList } = await verifyUpload(currentFile.name, currentFileHash)
     if (shouldUpload) {
       data.value = fileChunkList.map((file, index) => ({
         chunk: file,
         chunkHash: currentFileHash + '-' + index,
         precentage: 0,
-        fileHash: currentFileHash
+        fileHash: currentFileHash,
+        index
       }))
-      await uploadChunks()
+      await uploadChunks(uploadedList)
     } else {
       hashPrecentage.value = 0
       alert('跳过')
     }
   }
+}
+
+const handleResume = async () => {
+  const { uploadedList } = await verifyUpload(currentFile.name, currentFileHash)
+  await uploadChunks(uploadedList)
 }
 
 /**
@@ -176,17 +186,23 @@ const createFileChunk = (file: File, size = CHUNK_SIZE) => {
 /**
  * 上传切片
  */
-const uploadChunks = async () => {
+const uploadChunks = async (uploadedList: string[] = []) => {
   const requestList = data.value
+    .filter((item) => {
+      return !uploadedList.includes(item.chunkHash)
+    })
     .map((item) => {
       const formData = new FormData()
       formData.append('chunk', item.chunk)
       formData.append('chunkHash', item.chunkHash)
       formData.append('filename', currentFile.name)
       formData.append('fileHash', item.fileHash)
-      return formData
+      return {
+        formData,
+        index: item.index
+      }
     })
-    .map((formData, index) =>
+    .map(({ formData, index }) =>
       request({
         url: 'http://localhost:3000',
         data: formData,
@@ -246,6 +262,7 @@ const uploadPrecentage = computed(() => {
     <input type="file" @change="handleFileChange" />
     <input type="button" value="upload" @click="handleUpload" />
     <input type="button" value="pause" @click="handlePause" />
+    <input type="button" value="resume" @click="handleResume" />
     <div></div>
     <div v-for="item in data" :key="item.chunkHash">
       <span>{{ item.chunkHash }}: </span>

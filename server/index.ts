@@ -51,10 +51,20 @@ server.on("request", async (req, res) => {
     if (fse.existsSync(filePath)) {
       res.end(JSON.stringify({ shouldUpload: false }));
     } else {
-      res.end(JSON.stringify({ shouldUpload: true }));
+      res.end(
+        JSON.stringify({
+          shouldUpload: true,
+          uploadedList: await createUploadedList(fileHash),
+        })
+      );
     }
   }
 });
+
+const createUploadedList = async (fileHash: string) => {
+  const chunkPath = path.resolve(UPLOAD_DIR, `chunkDir_${fileHash}`);
+  return fse.existsSync(chunkPath) ? await fse.readdir(chunkPath) : [];
+};
 
 /**
  * 提取文件拓展名
