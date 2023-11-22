@@ -107,7 +107,7 @@ const handlePause = () => {
 const handleUpload = async () => {
   if (currentFile) {
     const fileChunkList = createFileChunk(currentFile)
-    currentFileHash = await calculateHash(fileChunkList)
+    currentFileHash = await calculateHash(currentFile)
     const { shouldUpload, uploadedList } = await verifyUpload(currentFile.name, currentFileHash)
     if (shouldUpload) {
       data.value = fileChunkList.map((file, index) => ({
@@ -159,7 +159,7 @@ const verifyUpload = async (fileName: string, fileHash: string): Promise<Record<
  * 计算 hash
  * @param fileChunkList 切片列表
  */
-const calculateHash = (fileChunkList: Blob[]): Promise<string> => {
+const calculateHash = (file: File): Promise<string> => {
   return new Promise((resolve) => {
     const spark = new SparkMD5.ArrayBuffer()
 
@@ -179,21 +179,51 @@ const calculateHash = (fileChunkList: Blob[]): Promise<string> => {
     let count = 0
 
     const workLoop = async (deadline: IdleDeadline) => {
-      while (count < fileChunkList.length && deadline.timeRemaining() > 0) {
-        await appendToSpark(fileChunkList[count])
+      while (count < chunks.length && deadline.timeRemaining() > 0) {
+        await appendToSpark(chunks[count])
 
-        hashPrecentage.value = Math.ceil(((count + 1) / fileChunkList.length) * 100)
+        hashPrecentage.value = Math.ceil(((count + 1) / chunks.length) * 100)
 
         count++
       }
 
-      if (count === fileChunkList.length) {
+      if (count === chunks.length) {
         resolve(spark.end())
       } else {
         requestIdleCallback(workLoop)
       }
     }
-    requestIdleCallback(workLoop)
+
+    const offset = 2 * 1024 * 1024
+
+    let chunks = [file.slice(0, offset)]
+
+    let cur = offset
+
+    const getSampleLoop = (deadline: IdleDeadline) => {
+      while (cur < file.size && deadline.timeRemaining() > 0) {
+        if (cur + offset >= file.size) {
+          chunks.push(file.slice(cur, cur + offset))
+        } else {
+          const mid = cur + offset / 2
+          const end = cur + offset
+
+          chunks.push(file.slice(cur, cur + 2))
+          chunks.push(file.slice(mid, mid + 2))
+          chunks.push(file.slice(end - 2, end))
+        }
+
+        cur += offset
+      }
+
+      if (cur < file.size) {
+        requestIdleCallback(getSampleLoop)
+      } else {
+        requestIdleCallback(workLoop)
+      }
+    }
+
+    requestIdleCallback(getSampleLoop)
   })
 }
 
