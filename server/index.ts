@@ -24,23 +24,24 @@ server.on("request", async (req, res) => {
   multipart.parse(req, async (err, fields, files) => {
     if (!err) {
       const chunk = files.chunk[0];
-      const hash = fields.hash[0];
-      const filename = fields.filename[0];
-      const chunkDir = path.resolve(UPLOAD_DIR, "chunkDir_" + filename);
+      const chunkHash = fields.chunkHash[0];
+      const fileHash = fields.fileHash[0];
+      const chunkDir = path.resolve(UPLOAD_DIR, "chunkDir_" + fileHash);
 
       if (!fse.existsSync(chunkDir)) {
         await fse.mkdirs(chunkDir);
       }
 
-      await fse.move(chunk.path, `${chunkDir}/${hash}`);
+      await fse.move(chunk.path, `${chunkDir}/${chunkHash}`);
       res.end("receive file chunk");
     }
   });
 
   if (req.url === "/merge") {
-    const data: any = await resolvePost(req);
-    const filePath = path.resolve(UPLOAD_DIR, data.filename);
-    await mergeFileChunk(filePath, data.filename, data.chunkSize);
+    const data = await resolvePost(req);
+    const extension = data.filename.split(".")[1];
+    const filePath = path.resolve(UPLOAD_DIR, `${data.fileHash}.${extension}`);
+    await mergeFileChunk(filePath, data.fileHash, data.chunkSize);
     res.end(JSON.stringify({ code: 0, message: "file merged success" }));
   }
 });
@@ -50,7 +51,9 @@ server.on("request", async (req, res) => {
  * @param req 请求对象
  * @returns promise
  */
-const resolvePost = (req: http.IncomingMessage) => {
+const resolvePost = (
+  req: http.IncomingMessage
+): Promise<{ fileHash: string; chunkSize: number; filename: string }> => {
   return new Promise((resolve) => {
     let chunk = "";
     req.on("data", (data) => {
@@ -67,10 +70,10 @@ const resolvePost = (req: http.IncomingMessage) => {
  */
 const mergeFileChunk = async (
   filePath: string,
-  fileName: string,
+  fileHash: string,
   chunkSize: number
 ) => {
-  const chunkDir = path.resolve(UPLOAD_DIR, "chunkDir_" + fileName);
+  const chunkDir = path.resolve(UPLOAD_DIR, "chunkDir_" + fileHash);
   const chunkPaths = await fse.readdir(chunkDir);
 
   chunkPaths.sort((a, b) => Number(a.split("-")[1]) - Number(b.split("-")[1]));

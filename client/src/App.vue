@@ -6,10 +6,16 @@ import { computed, ref, type Ref } from 'vue'
  */
 let currentFile: File
 
+/**
+ * 当前上传的文件 hash
+ */
+let currentFileHash: string
+
 interface Chunk {
   chunk: Blob
-  hash: string
+  chunkHash: string
   precentage: number
+  fileHash: string
 }
 
 /**
@@ -21,6 +27,11 @@ let data: Ref<Chunk[]> = ref([])
  * 每个切片的大小
  */
 const CHUNK_SIZE = 10 * 1024 * 1024
+
+/**
+ * hash 计算进度
+ */
+const hashPrecentage = ref(0)
 
 /**
  * 切换上传文件
@@ -74,13 +85,37 @@ const request = ({
 const handleUpload = async () => {
   if (currentFile) {
     const fileChunkList = createFileChunk(currentFile)
+    currentFileHash = await calculateHash(fileChunkList)
     data.value = fileChunkList.map((file, index) => ({
       chunk: file,
-      hash: currentFile.name + '-' + index,
-      precentage: 0
+      chunkHash: currentFileHash + '-' + index,
+      precentage: 0,
+      fileHash: currentFileHash
     }))
     await uploadChunks()
   }
+}
+
+/**
+ * 计算 hash
+ * @param fileChunkList 切片列表
+ */
+const calculateHash = (fileChunkList: Blob[]): Promise<string> => {
+  return new Promise((resolve) => {
+    const worker = new Worker('/hash.js')
+
+    worker.postMessage({ fileChunkList })
+
+    worker.onmessage = (e) => {
+      const { precentage, hash } = e.data
+
+      hashPrecentage.value = precentage
+
+      if (hash) {
+        resolve(hash)
+      }
+    }
+  })
 }
 
 /**
@@ -106,8 +141,9 @@ const uploadChunks = async () => {
     .map((item) => {
       const formData = new FormData()
       formData.append('chunk', item.chunk)
-      formData.append('hash', item.hash)
+      formData.append('chunkHash', item.chunkHash)
       formData.append('filename', currentFile.name)
+      formData.append('fileHash', item.fileHash)
       return formData
     })
     .map((formData, index) =>
@@ -123,6 +159,7 @@ const uploadChunks = async () => {
   await mergeRequest()
 
   data.value.length = 0
+  hashPrecentage.value = 0
 }
 
 /**
@@ -146,7 +183,8 @@ const mergeRequest = async () => {
     },
     data: JSON.stringify({
       filename: currentFile.name,
-      chunkSize: CHUNK_SIZE
+      chunkSize: CHUNK_SIZE,
+      fileHash: currentFileHash
     })
   })
 }
@@ -168,9 +206,13 @@ const uploadPrecentage = computed(() => {
     <input type="file" @change="handleFileChange" />
     <input type="button" value="upload" @click="handleUpload" />
     <div></div>
-    <div v-for="item in data" :key="item.hash">
-      <span>{{ item.hash }}: </span>
+    <div v-for="item in data" :key="item.chunkHash">
+      <span>{{ item.chunkHash }}: </span>
       <progress :value="item.precentage" :max="100"></progress>
+    </div>
+    <div>
+      <span>hash 进度: </span>
+      <progress :value="hashPrecentage" :max="100"></progress>
     </div>
     <div>
       <span>总进度: </span>
