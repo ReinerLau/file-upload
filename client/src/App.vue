@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SparkMD5 from 'spark-md5'
 import { computed, ref, type Ref } from 'vue'
 
 /**
@@ -160,19 +161,35 @@ const verifyUpload = async (fileName: string, fileHash: string): Promise<Record<
  */
 const calculateHash = (fileChunkList: Blob[]): Promise<string> => {
   return new Promise((resolve) => {
-    const worker = new Worker('/hash.js')
+    const spark = new SparkMD5.ArrayBuffer()
 
-    worker.postMessage({ fileChunkList })
-
-    worker.onmessage = (e) => {
-      const { precentage, hash } = e.data
-
-      hashPrecentage.value = precentage
-
-      if (hash) {
-        resolve(hash)
-      }
+    const appendToSpark = async (file: Blob) => {
+      return new Promise((resolve) => {
+        const reader = new FileReader()
+        reader.readAsArrayBuffer(file)
+        reader.onload = (e) => {
+          if (e.target && e.target.result instanceof ArrayBuffer) {
+            spark.append(e.target.result)
+          }
+          resolve(true)
+        }
+      })
     }
+
+    let count = 0
+
+    const workLoop = async (deadline: IdleDeadline) => {
+      while (count < fileChunkList.length && deadline.timeRemaining() > 1) {
+        await appendToSpark(fileChunkList[count])
+
+        hashPrecentage.value = Math.ceil((count + 1 / fileChunkList.length) * 100)
+
+        count++
+      }
+      resolve(spark.end())
+      requestIdleCallback(workLoop)
+    }
+    requestIdleCallback(workLoop)
   })
 }
 
@@ -268,6 +285,7 @@ const uploadPrecentage = computed(() => {
     <input type="button" value="upload" @click="handleUpload" />
     <input type="button" value="pause" @click="handlePause" />
     <input type="button" value="resume" @click="handleResume" />
+    <input type="text" value="" />
     <div>
       <span>hash 进度: </span>
       <progress :value="hashPrecentage" :max="100"></progress>
