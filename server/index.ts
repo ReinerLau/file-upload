@@ -39,12 +39,30 @@ server.on("request", async (req, res) => {
 
   if (req.url === "/merge") {
     const data = await resolvePost(req);
-    const extension = data.filename.split(".")[1];
-    const filePath = path.resolve(UPLOAD_DIR, `${data.fileHash}.${extension}`);
+    const extension = extractExt(data.filename);
+    const filePath = path.resolve(UPLOAD_DIR, `${data.fileHash}${extension}`);
     await mergeFileChunk(filePath, data.fileHash, data.chunkSize);
     res.end(JSON.stringify({ code: 0, message: "file merged success" }));
+  } else if (req.url === "/verify") {
+    const data = await resolvePost(req);
+    const { fileHash, fileName } = data;
+    const extension = extractExt(fileName);
+    const filePath = path.resolve(UPLOAD_DIR, `${fileHash}${extension}`);
+    if (fse.existsSync(filePath)) {
+      res.end(JSON.stringify({ shouldUpload: false }));
+    } else {
+      res.end(JSON.stringify({ shouldUpload: true }));
+    }
   }
 });
+
+/**
+ * 提取文件拓展名
+ * @param fileName 文件名
+ * @returns 拓展名
+ */
+const extractExt = (fileName: string) =>
+  fileName.slice(fileName.lastIndexOf("."), fileName.length);
 
 /**
  * 解析合并请求信息
@@ -53,7 +71,7 @@ server.on("request", async (req, res) => {
  */
 const resolvePost = (
   req: http.IncomingMessage
-): Promise<{ fileHash: string; chunkSize: number; filename: string }> => {
+): Promise<Record<string, any>> => {
   return new Promise((resolve) => {
     let chunk = "";
     req.on("data", (data) => {

@@ -62,7 +62,7 @@ const request = ({
   url: string
   method?: string
   data: any
-  headers?: Record<string, string>
+  headers?: Record<string, any>
   onProgress?: (e: ProgressEvent<EventTarget>) => any
 }) => {
   return new Promise((resolve) => {
@@ -86,14 +86,39 @@ const handleUpload = async () => {
   if (currentFile) {
     const fileChunkList = createFileChunk(currentFile)
     currentFileHash = await calculateHash(fileChunkList)
-    data.value = fileChunkList.map((file, index) => ({
-      chunk: file,
-      chunkHash: currentFileHash + '-' + index,
-      precentage: 0,
-      fileHash: currentFileHash
-    }))
-    await uploadChunks()
+    const { shouldUpload } = await verifyUpload(currentFile.name, currentFileHash)
+    if (shouldUpload) {
+      data.value = fileChunkList.map((file, index) => ({
+        chunk: file,
+        chunkHash: currentFileHash + '-' + index,
+        precentage: 0,
+        fileHash: currentFileHash
+      }))
+      await uploadChunks()
+    } else {
+      hashPrecentage.value = 0
+      alert('跳过')
+    }
   }
+}
+
+/**
+ * 校验服务器是否已经存在文件
+ * @param fileName 文件名
+ * @param fileHash 文件 hash
+ */
+const verifyUpload = async (fileName: string, fileHash: string): Promise<Record<string, any>> => {
+  const res: any = await request({
+    url: 'http://localhost:3000/verify',
+    headers: {
+      'content-type': 'application/json'
+    },
+    data: JSON.stringify({
+      fileName,
+      fileHash
+    })
+  })
+  return JSON.parse(res.data)
 }
 
 /**
