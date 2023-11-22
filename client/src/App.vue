@@ -246,7 +246,7 @@ const createFileChunk = (file: File, size = CHUNK_SIZE) => {
  * 上传切片
  */
 const uploadChunks = async (uploadedList: string[] = []) => {
-  const requestList = data.value
+  const forms = data.value
     .filter((item) => {
       return !uploadedList.includes(item.chunkHash)
     })
@@ -261,17 +261,44 @@ const uploadChunks = async (uploadedList: string[] = []) => {
         index: item.index
       }
     })
-    .map(({ formData, index }) =>
-      request({
-        url: 'http://localhost:3000',
-        data: formData,
-        onProgress: createProgressHandler(data.value[index])
-      })
-    )
-  // 并发上传
-  await Promise.all(requestList)
+
+  await sendRequest(forms, 2)
 
   await mergeRequest()
+}
+
+/**
+ * 控制并发请求数量
+ * @param forms 提交数据列表
+ * @param max 最大请求数量
+ */
+const sendRequest = (forms: { formData: FormData; index: number }[], max = 4) => {
+  return new Promise((resolve) => {
+    let cur = max
+    let idx = 0
+    let counter = 0
+    const start = () => {
+      while (idx < forms.length && cur > 0) {
+        const formData = forms[idx].formData
+        const index = forms[idx].index
+        request({
+          url: 'http://localhost:3000',
+          data: formData,
+          onProgress: createProgressHandler(data.value[index])
+        }).then(() => {
+          cur++
+          counter++
+          start()
+        })
+        cur--
+        idx++
+      }
+      if (counter === forms.length) {
+        resolve(true)
+      }
+    }
+    start()
+  })
 }
 
 /**
