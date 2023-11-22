@@ -179,15 +179,19 @@ const calculateHash = (fileChunkList: Blob[]): Promise<string> => {
     let count = 0
 
     const workLoop = async (deadline: IdleDeadline) => {
-      while (count < fileChunkList.length && deadline.timeRemaining() > 1) {
+      while (count < fileChunkList.length && deadline.timeRemaining() > 0) {
         await appendToSpark(fileChunkList[count])
 
-        hashPrecentage.value = Math.ceil((count + 1 / fileChunkList.length) * 100)
+        hashPrecentage.value = Math.ceil(((count + 1) / fileChunkList.length) * 100)
 
         count++
       }
-      resolve(spark.end())
-      requestIdleCallback(workLoop)
+
+      if (count === fileChunkList.length) {
+        resolve(spark.end())
+      } else {
+        requestIdleCallback(workLoop)
+      }
     }
     requestIdleCallback(workLoop)
   })
