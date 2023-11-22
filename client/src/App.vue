@@ -42,6 +42,8 @@ const handleFileChange = (e: any) => {
   const file = e.target.files[0]
   if (file) {
     currentFile = file
+    data.value.length = 0
+    hashPrecentage.value = 0
   }
 }
 
@@ -110,21 +112,27 @@ const handleUpload = async () => {
       data.value = fileChunkList.map((file, index) => ({
         chunk: file,
         chunkHash: currentFileHash + '-' + index,
-        precentage: 0,
+        precentage: uploadedList.includes(currentFileHash + '-' + index) ? 100 : 0,
         fileHash: currentFileHash,
         index
       }))
       await uploadChunks(uploadedList)
     } else {
-      hashPrecentage.value = 0
       alert('跳过')
     }
   }
 }
 
+/**
+ * 恢复上传
+ */
 const handleResume = async () => {
-  const { uploadedList } = await verifyUpload(currentFile.name, currentFileHash)
-  await uploadChunks(uploadedList)
+  const { shouldUpload, uploadedList } = await verifyUpload(currentFile.name, currentFileHash)
+  if (shouldUpload) {
+    await uploadChunks(uploadedList)
+  } else {
+    alert('跳过')
+  }
 }
 
 /**
@@ -213,9 +221,6 @@ const uploadChunks = async (uploadedList: string[] = []) => {
   await Promise.all(requestList)
 
   await mergeRequest()
-
-  data.value.length = 0
-  hashPrecentage.value = 0
 }
 
 /**
@@ -251,9 +256,9 @@ const mergeRequest = async () => {
 const uploadPrecentage = computed(() => {
   if (data.value.length === 0) return 0
   const loaded = data.value
-    .map((item) => item.chunk.size * item.precentage)
+    .map((item) => item.chunk.size * (item.precentage / 100))
     .reduce((acc, cur) => acc + cur)
-  return parseInt((loaded / currentFile.size).toFixed(2))
+  return Math.ceil((loaded / currentFile.size) * 100)
 })
 </script>
 
@@ -263,11 +268,6 @@ const uploadPrecentage = computed(() => {
     <input type="button" value="upload" @click="handleUpload" />
     <input type="button" value="pause" @click="handlePause" />
     <input type="button" value="resume" @click="handleResume" />
-    <div></div>
-    <div v-for="item in data" :key="item.chunkHash">
-      <span>{{ item.chunkHash }}: </span>
-      <progress :value="item.precentage" :max="100"></progress>
-    </div>
     <div>
       <span>hash 进度: </span>
       <progress :value="hashPrecentage" :max="100"></progress>
@@ -275,6 +275,10 @@ const uploadPrecentage = computed(() => {
     <div>
       <span>总进度: </span>
       <progress :value="uploadPrecentage" :max="100"></progress>
+    </div>
+    <div v-for="item in data" :key="item.chunkHash">
+      <span>{{ item.chunkHash }}: </span>
+      <progress :value="item.precentage" :max="100"></progress>
     </div>
   </div>
 </template>
