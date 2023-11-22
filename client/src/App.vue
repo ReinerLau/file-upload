@@ -45,6 +45,11 @@ const handleFileChange = (e: any) => {
 }
 
 /**
+ * 正在上传的请求
+ */
+const requestList: XMLHttpRequest[] = []
+
+/**
  * 封装请求方法
  * @param options 请求选项
  * @param options.url 请求路径
@@ -72,11 +77,21 @@ const request = ({
     Object.keys(headers).forEach((key) => xhr.setRequestHeader(key, headers[key]))
     xhr.send(data)
     xhr.onload = (e: any) => {
+      if (requestList) {
+        const xhrIndex = requestList.findIndex((item) => item === xhr)
+        requestList.splice(xhrIndex, 1)
+      }
       resolve({
         data: e.target.response
       })
     }
+    requestList.push(xhr)
   })
+}
+
+const handlePause = () => {
+  requestList.forEach((xhr) => xhr.abort())
+  requestList.length = 0
 }
 
 /**
@@ -230,6 +245,7 @@ const uploadPrecentage = computed(() => {
   <div>
     <input type="file" @change="handleFileChange" />
     <input type="button" value="upload" @click="handleUpload" />
+    <input type="button" value="pause" @click="handlePause" />
     <div></div>
     <div v-for="item in data" :key="item.chunkHash">
       <span>{{ item.chunkHash }}: </span>
