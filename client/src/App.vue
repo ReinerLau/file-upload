@@ -268,17 +268,26 @@ const uploadChunks = async (uploadedList: string[] = []) => {
       }
     })
 
-  await sendRequest(forms, 2)
-
-  await mergeRequest()
+  try {
+    await sendRequest(forms, 2)
+    mergeRequest()
+  } catch (error) {
+    console.error(error)
+  }
 }
 
+/**
+ * 切片上传状态映射
+ */
 const Status = {
   WAIT: 0,
   UPLOADING: 1,
   DONE: 2,
-  ERROR: 3
+  ERROR: 3,
+  OUT: 4
 }
+
+let retryArr: number[]
 
 /**
  * 控制并发请求数量
@@ -286,7 +295,9 @@ const Status = {
  * @param max 最大请求数量
  */
 const sendRequest = (forms: { formData: FormData; index: number; status: number }[], max = 4) => {
-  return new Promise((resolve) => {
+  retryArr = new Array(forms.length).fill(0)
+
+  return new Promise((resolve, reject) => {
     let cur = max
     let counter = 0
     const start = () => {
@@ -315,8 +326,14 @@ const sendRequest = (forms: { formData: FormData; index: number; status: number 
           })
           .catch(() => {
             cur++
-            forms[idx].status = Status.ERROR
             data.value[index].precentage = 0
+            retryArr[index] += 1
+            if (retryArr[index] >= 2) {
+              reject(index)
+              forms[idx].status = Status.OUT
+            } else {
+              forms[idx].status = Status.ERROR
+            }
             start()
           })
         cur--
