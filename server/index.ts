@@ -19,24 +19,6 @@ server.on("request", async (req, res) => {
     return;
   }
 
-  const multipart = new multiparty.Form();
-
-  multipart.parse(req, async (err, fields, files) => {
-    if (!err) {
-      const chunk = files.chunk[0];
-      const chunkHash = fields.chunkHash[0];
-      const fileHash = fields.fileHash[0];
-      const chunkDir = path.resolve(UPLOAD_DIR, "chunkDir_" + fileHash);
-
-      if (!fse.existsSync(chunkDir)) {
-        await fse.mkdirs(chunkDir);
-      }
-
-      await fse.move(chunk.path, `${chunkDir}/${chunkHash}`);
-      res.end("receive file chunk");
-    }
-  });
-
   if (req.url === "/merge") {
     const data = await resolvePost(req);
     const extension = extractExt(data.filename);
@@ -59,6 +41,29 @@ server.on("request", async (req, res) => {
       );
     }
   }
+
+  const multipart = new multiparty.Form();
+
+  multipart.parse(req, async (err, fields, files) => {
+    if (Math.random() < 0.5) {
+      res.statusCode = 500;
+      res.end();
+      return;
+    }
+    if (!err) {
+      const chunk = files.chunk[0];
+      const chunkHash = fields.chunkHash[0];
+      const fileHash = fields.fileHash[0];
+      const chunkDir = path.resolve(UPLOAD_DIR, "chunkDir_" + fileHash);
+
+      if (!fse.existsSync(chunkDir)) {
+        await fse.mkdirs(chunkDir);
+      }
+
+      await fse.move(chunk.path, `${chunkDir}/${chunkHash}`);
+      res.end("receive file chunk");
+    }
+  });
 });
 
 const createUploadedList = async (fileHash: string) => {

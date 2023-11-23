@@ -74,7 +74,7 @@ const request = ({
   headers?: Record<string, any>
   onProgress?: (e: ProgressEvent<EventTarget>) => any
 }) => {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     xhr.upload.onprogress = onProgress
     xhr.open(method, url)
@@ -85,9 +85,14 @@ const request = ({
         const xhrIndex = requestList.findIndex((item) => item === xhr)
         requestList.splice(xhrIndex, 1)
       }
-      resolve({
-        data: e.target.response
-      })
+
+      if (e.target.status === 200) {
+        resolve({
+          data: e.target.response
+        })
+      } else {
+        reject()
+      }
     }
     requestList.push(xhr)
   })
@@ -258,7 +263,8 @@ const uploadChunks = async (uploadedList: string[] = []) => {
       formData.append('fileHash', item.fileHash)
       return {
         formData,
-        index: item.index
+        index: item.index,
+        status: Status.WAIT
       }
     })
 
@@ -267,34 +273,54 @@ const uploadChunks = async (uploadedList: string[] = []) => {
   await mergeRequest()
 }
 
+const Status = {
+  WAIT: 0,
+  UPLOADING: 1,
+  DONE: 2,
+  ERROR: 3
+}
+
 /**
  * 控制并发请求数量
  * @param forms 提交数据列表
  * @param max 最大请求数量
  */
-const sendRequest = (forms: { formData: FormData; index: number }[], max = 4) => {
+const sendRequest = (forms: { formData: FormData; index: number; status: number }[], max = 4) => {
   return new Promise((resolve) => {
     let cur = max
-    let idx = 0
     let counter = 0
     const start = () => {
-      while (idx < forms.length && cur > 0) {
+      while (counter < forms.length && cur > 0) {
+        const idx = forms.findIndex(
+          (item) => item.status === Status.WAIT || item.status === Status.ERROR
+        )
+        // 表示只剩下正在上传的切片停止循环
+        if (idx === -1) break
         const formData = forms[idx].formData
         const index = forms[idx].index
         request({
           url: 'http://localhost:3000',
           data: formData,
           onProgress: createProgressHandler(data.value[index])
-        }).then(() => {
-          cur++
-          counter++
-          start()
         })
+          .then(() => {
+            cur++
+            counter++
+            forms[idx].status = Status.DONE
+            if (counter === forms.length) {
+              resolve(true)
+            } else {
+              start()
+            }
+          })
+          .catch(() => {
+            cur++
+            forms[idx].status = Status.ERROR
+            data.value[index].precentage = 0
+            start()
+          })
         cur--
-        idx++
-      }
-      if (counter === forms.length) {
-        resolve(true)
+        forms[idx].status = Status.UPLOADING
       }
     }
     start()
